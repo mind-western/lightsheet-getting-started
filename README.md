@@ -14,6 +14,14 @@ microscope ──► core: stitch to Imaris (.ims) ──► /nfs/trident3/light
                                                 SPIMquant ──► <project>/derivatives/spimquant_<version>/
 ```
 
+### Where each step runs
+
+| Step | Where | Why |
+|---|---|---|
+| Viewing data (napari) | CBS **VDI** | Graphical desktop |
+| Making the BIDS dataset (`spimpack-ui`) | CBS **VDI** | Runs in a web browser |
+| Running SPIMquant | CBS **SLURM cluster** | Needs many cores and lots of memory |
+
 ## Contents
 
 1. [Prerequisites](#1-prerequisites)
@@ -28,10 +36,32 @@ microscope ──► core: stitch to Imaris (.ims) ──► /nfs/trident3/light
 
 This guide assumes the following are in place.
 
-### 1.1 Access to the CBS server
+### 1.1 Access to the CBS servers
 
-You need an account on the CBS server; all commands below are run there unless
-stated otherwise. Ask your PI if you don't have access yet.
+The CBS servers at Robarts have two parts that we use (full docs:
+**[CBS server guides](https://hackmd.io/@CompCore/cbs_servers)**):
+
+- **VDI (virtual desktop):** a Linux desktop you connect to with the
+  [Omnissa Horizon Client](https://hackmd.io/@CompCore/cbs_vdi), server
+  `vdi.robarts.ca`, logging in with `<westernid>@uwo.ca`. Use it to **look at
+  data** and run interactive tools (napari, `spimpack-ui`).
+- **SLURM cluster:** compute nodes with many cores, lots of memory and GPUs. Use it
+  to **run SPIMquant**. Log in from the VDI (or the campus network) with:
+
+  ```bash
+  ssh <westernid>@rri-cbs-slurm
+  ```
+
+  See the [CBS SLURM guide](https://hackmd.io/@CompCore/cbs_slurm) for details.
+  The first time, connect and disconnect once, then wait an hour for your account
+  to be set up before connecting again.
+
+This tutorial assumes you already have a CBS **Power** account, which is needed for
+SLURM access (a Basic account only gets the VDI). Ask your PI if you don't have one.
+
+> **Your home directory on the VDI and on SLURM are separate.** Install pixi, uv and
+> the tools below on each system where you'll use them: napari and SPIMpack on the
+> VDI, SPIMquant on the SLURM login node.
 
 ### 1.2 pixi (Python tools: SPIMpack, SPIMquant, ...)
 
@@ -44,6 +74,8 @@ source ~/.bashrc    # or open a new terminal
 pixi --version
 ```
 
+Do this on both the VDI and the SLURM login node.
+
 Our tools are published on the `khanlab` channel on prefix.dev
 (`https://prefix.dev/akhanf/khanlab`), and are installed with `pixi global install`
 (see sections 3 and 4).
@@ -51,7 +83,7 @@ Our tools are published on the `khanlab` channel on prefix.dev
 ### 1.3 uv (napari)
 
 [uv](https://docs.astral.sh/uv/) is used to install [napari](https://napari.org),
-the image viewer we use on Linux:
+the image viewer we use on Linux. You only need it on the VDI:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -62,8 +94,8 @@ uv --version
 ### 1.4 Data lives on `/nfs/trident3`
 
 Lightsheet data are stored under `/nfs/trident3/lightsheet/`. `trident3` is our
-newest fileserver and can be NFS-mounted from the cluster, so it is the preferred
-location for active projects.
+newest fileserver and is mounted on both the VDI and the SLURM cluster, so it is
+the preferred location for active projects.
 
 ### 1.5 Stitching is done by the core
 
@@ -72,6 +104,15 @@ core. The stitched datasets are placed on `trident3` in your project's
 `raw/ims_<objective>x[<zoom>]_stitched/` folder. This guide starts from there.
 
 ### 1.6 Folder structure
+
+Each project has the following layout:
+
+| Folder | Contents |
+|---|---|
+| `raw/` | Imaris datasets (placed here by the core) |
+| `bids/` | BIDS dataset made by SPIMpack (section 3) |
+| `etc/` | SPIMpack manifest (`manifest.yml`, `scans.tsv`), spreadsheets, notes, etc. |
+| `derivatives/` | Pipeline outputs, e.g. SPIMquant (section 4) |
 
 The `lightsheet/` folder follows the MIND naming standard, described in full (with a
 browser-based validator) at
@@ -91,8 +132,8 @@ In short:
         │       └── b_AS134F3/
         │           └── *.ims
         ├── bids/                     # made by SPIMpack (section 3)
-        ├── derivatives/              # pipeline outputs, e.g. spimquant_v0.10.0/
-        └── etc/                      # spreadsheets, notes, anything else
+        ├── etc/                      # SPIMpack manifest, spreadsheets, notes
+        └── derivatives/              # pipeline outputs, e.g. spimquant_v0.10.0/
 ```
 
 The `<subject_id>` in each sample folder name becomes the BIDS participant label,
@@ -106,7 +147,7 @@ Before processing, open a few datasets to check they look right (whole brain pre
 all channels there, no obvious stitching problems).
 
 - **Windows:** use the free [Imaris Viewer](https://imaris.oxinst.com/imaris-viewer).
-- **Linux (e.g. on the CBS server):** use napari with the
+- **Linux (CBS VDI):** use napari with the
   [napari-zarrnii](https://github.com/khanlab/napari-zarrnii) plugin, which reads
   `.ims` files directly.
 
@@ -122,8 +163,8 @@ Then launch it and drag in an `.ims` file (or use *File → Open*):
 napari
 ```
 
-> napari needs a graphical session. Run it from a remote desktop session on the
-> CBS server, not a plain SSH terminal.
+Run napari on the VDI desktop, not on the SLURM cluster. Large datasets open
+faster on the CBS-Heavy VDI (Power accounts).
 
 ---
 
@@ -134,6 +175,8 @@ datasets into a [BIDS](https://bids-specification.readthedocs.io/en/stable/modal
 dataset. It doesn't copy or convert the images. It creates symlinks to your `.ims`
 files and writes the metadata (stains, orientation, voxel size, ...) that
 downstream tools need.
+
+Do this section on the **VDI**.
 
 ### 3.1 Install SPIMpack
 
@@ -149,14 +192,7 @@ To update to the latest release later, run `pixi global update spimpack`.
 spimpack-ui
 ```
 
-A browser window opens at `http://localhost:8501`.
-
-> **Running on the server over SSH?** Forward the port, then open
-> `http://localhost:8501` in the browser on your own computer:
->
-> ```bash
-> ssh -L 8501:localhost:8501 <user>@<cbs-server>
-> ```
+A browser window opens on the VDI desktop at `http://localhost:8501`.
 
 ### 3.3 Fill in the dataset
 
@@ -229,9 +265,18 @@ Don't edit files in `bids/` by hand. To change something, load the manifest in
 atlas, segments pathology/cell stains and vessels, and produces region-wise
 statistics. Full documentation: <https://spimquant.readthedocs.io>.
 
+Do this section on the **SLURM cluster**. From a VDI terminal:
+
+```bash
+ssh <westernid>@rri-cbs-slurm
+```
+
+You run `spimquant` on the login node. It doesn't do the processing there:
+it submits each step as a SLURM job to the compute nodes and keeps track of them.
+
 ### 4.1 Install
 
-Install the latest release with pixi:
+On the SLURM login node, install the latest release with pixi:
 
 ```bash
 pixi global install \
@@ -257,7 +302,7 @@ dry run (`-n`), which lists the jobs that would run without running them:
 BIDS=/nfs/trident3/lightsheet/<pi>/<project>/bids
 OUT=/nfs/trident3/lightsheet/<pi>/<project>/derivatives/spimquant_v0.10.0
 
-spimquant $BIDS $OUT participant -n
+spimquant $BIDS $OUT participant --executor slurm -n
 ```
 
 Name the output folder after the SPIMquant version you are running
@@ -267,15 +312,33 @@ To test on a single subject first, add `--participant-label AS134F1`.
 
 ### 4.3 Participant-level run
 
+Start a `tmux` session first. A full run takes hours to days, and `spimquant` must
+keep running on the login node until all jobs finish. With `tmux`, it survives
+if you disconnect:
+
 ```bash
-spimquant $BIDS $OUT participant --cores all
+tmux new -s spimquant            # later: tmux attach -t spimquant
 ```
+
+Then submit the workflow to SLURM:
+
+```bash
+spimquant $BIDS $OUT participant --executor slurm --jobs 100 --retries 1
+```
+
+- `--executor slurm`: submit each step as a SLURM job instead of running it locally.
+- `--jobs 100`: at most 100 jobs queued or running at once.
+- `--retries 1`: rerun a failed job once with more memory and time. This also
+  covers transient shared-filesystem delays.
+
+Check on your jobs with `squeue -u $USER`. Each job's log is under
+`$OUT/.snakemake/slurm_logs/`.
 
 Useful options:
 
 | Option | What it does |
 |---|---|
-| `--cores N` / `--cores all` | Number of CPU cores to use |
+| `--executor slurm` / `--jobs N` | Submit to SLURM, up to N jobs at once |
 | `--participant-label ...` | Only process these subjects |
 | `--template {ABAv3,DSURQE,gubra,MBMv3,turone}` | Registration template (default `ABAv3`, Allen mouse) |
 | `--template-crop {left,right}` | Register to one hemisphere of the template |
@@ -285,8 +348,8 @@ Useful options:
 | `--stains-for-vessels ...` | Stains to use for vessel segmentation |
 | `--report` | Write an HTML report of the workflow |
 
-Processing whole brains takes significant memory and disk. See SPIMquant's
-[hardware notes](https://spimquant.readthedocs.io/en/latest/getting_started/hardware.html).
+Steps that use a GPU (e.g. vessel segmentation with vesselFM) need extra setup.
+See the [SPIMquant cluster docs](https://spimquant.readthedocs.io/en/latest/usage/workflows.html#slurm).
 
 ### 4.4 Stains
 
@@ -310,7 +373,7 @@ Key outputs in `$OUT`:
 - `sub-*/seg/*_mask.ozx`: full-resolution segmentations
 - `sub-*/tabular/*_segstats.tsv`: region-wise quantification
 
-View the volumetric results in napari (section 2).
+View the volumetric results in napari on the VDI (section 2).
 
 ### 4.6 Group-level statistics
 
@@ -323,7 +386,7 @@ spimquant $BIDS $OUT group \
   --group-stats-model "metric ~ C(treatment) + age" \
   --group-stats-pairwise treatment \
   --group-stats-label treatment_analysis \
-  --cores all
+  --executor slurm --jobs 10
 ```
 
 Results (merged tables, per-region stats, heatmaps and statistical maps) are written
@@ -334,6 +397,9 @@ for more complex designs.
 ---
 
 ## 5. Getting help
+
+- CBS accounts, VDI, SLURM and storage: [CBS server guides](https://hackmd.io/@CompCore/cbs_servers),
+  or email support-cbs-server@uwo.ca
 
 - Folder naming / validator: [khanlab/mind-lightsheet-validator](https://github.com/khanlab/mind-lightsheet-validator/issues)
 - BIDS packaging: [khanlab/SPIMpack](https://github.com/khanlab/SPIMpack/issues)
