@@ -312,27 +312,29 @@ To test on a single subject first, add `--participant-label AS134F1`.
 
 ### 4.3 Participant-level run
 
-Start a `tmux` session first. A full run takes hours to days, and `spimquant` must
-keep running on the login node until all jobs finish. With `tmux`, it survives
-if you disconnect:
+From a terminal on the VDI, logged in to the SLURM login node, submit the
+workflow to SLURM:
 
 ```bash
-tmux new -s spimquant            # later: tmux attach -t spimquant
+spimquant $BIDS $OUT participant --executor slurm --jobs 10 --retries 1
 ```
 
-Then submit the workflow to SLURM:
-
-```bash
-spimquant $BIDS $OUT participant --executor slurm --jobs 100 --retries 1
-```
+`spimquant` keeps running on the login node until all jobs finish, which can take
+hours to days. Your VDI session doesn't time out, so just leave the terminal open.
+You can also use `tmux` or `screen` if you prefer.
 
 - `--executor slurm`: submit each step as a SLURM job instead of running it locally.
-- `--jobs 100`: at most 100 jobs queued or running at once.
+- `--jobs 10`: at most 10 jobs queued or running at once.
 - `--retries 1`: rerun a failed job once with more memory and time. This also
   covers transient shared-filesystem delays.
 
 Check on your jobs with `squeue -u $USER`. Each job's log is under
 `$OUT/.snakemake/slurm_logs/`.
+
+> **Running SPIMquant inside a single SLURM job** (e.g. with `sbatch` or an
+> interactive `salloc` session, using `--cores all` instead of `--executor slurm`)
+> is possible but not recommended except for short tests. A job is limited to one
+> node and a 48 h maximum, and you lose the per-step parallelism and retries.
 
 Useful options:
 
