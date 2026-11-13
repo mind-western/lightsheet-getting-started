@@ -4,6 +4,13 @@ A step-by-step guide to working with lightsheet microscopy data in our labs: fro
 stitched Imaris datasets on `trident3`, to a BIDS dataset, to quantitative results
 with [SPIMquant](https://github.com/khanlab/SPIMquant).
 
+**Slides:** this guide is also available as a slide deck:
+[HTML](https://www.mind-western.ca/lightsheet-getting-started/) ·
+[PDF](https://www.mind-western.ca/lightsheet-getting-started/slides.pdf).
+The deck source is [`slides.md`](slides.md) ([Marp](https://marp.app/)). It is
+rebuilt and published by GitHub Actions on every push to `main`, so update it
+along with this README.
+
 ```
 microscope ──► core: stitch to Imaris (.ims) ──► /nfs/trident3/lightsheet/<pi>/<project>/raw/
                                                          │
